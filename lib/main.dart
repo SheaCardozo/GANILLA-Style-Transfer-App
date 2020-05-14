@@ -11,30 +11,30 @@ import 'package:overlay_support/overlay_support.dart';
 
 import 'img_fix.dart';
 
-Future<void> main() async {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
 
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
 
   // Obtain a list of the available cameras on the device.
-  final cameras = await availableCameras();
+  availableCameras().then((cameras) {
+    // Get cameras from the list of available cameras.
+    final firstCamera = cameras.first;
+    final secondCamera = cameras.length > 1 ? cameras[1] : null;
 
-  // Get cameras from the list of available cameras.
-  final firstCamera = cameras.first;
-  final secondCamera = cameras.length > 1 ? cameras[1] : null;
-
-  runApp(
-    OverlaySupport(
-      child: MaterialApp(
-        theme: ThemeData.dark(),
-        home: TakePictureScreen(
-          // Pass the appropriate cameras to the TakePictureScreen widget.
-          cameraBack: firstCamera,
-          cameraFront: secondCamera,
+    runApp(
+      OverlaySupport(
+        child: MaterialApp(
+          theme: ThemeData.dark(),
+          home: TakePictureScreen(
+            // Pass the appropriate cameras to the TakePictureScreen widget.
+            cameraBack: firstCamera,
+            cameraFront: secondCamera,
+          ),
         ),
       ),
-    ),
-  );
+    );
+  });
 }
 
 // A screen that allows users to take a picture using a given camera.
@@ -52,7 +52,8 @@ class TakePictureScreen extends StatefulWidget {
   TakePictureScreenState createState() => TakePictureScreenState();
 }
 
-class TakePictureScreenState extends State<TakePictureScreen> {
+class TakePictureScreenState extends State<TakePictureScreen>
+    with WidgetsBindingObserver {
   CameraController _controller;
   Future<void> _initializeControllerFuture;
   bool whichCam;
@@ -61,6 +62,7 @@ class TakePictureScreenState extends State<TakePictureScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     aspectRatio = 2 / 3;
     whichCam = true;
     initCamera(whichCam);
@@ -86,7 +88,19 @@ class TakePictureScreenState extends State<TakePictureScreen> {
   void dispose() {
     // Dispose of the controller when the widget is disposed.
     _controller.dispose();
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    print(state);
+    if (state == AppLifecycleState.resumed) {
+      initCamera(whichCam);
+      setState(() {});
+    } else {
+      _controller.dispose();
+    }
   }
 
   @override
@@ -106,10 +120,7 @@ class TakePictureScreenState extends State<TakePictureScreen> {
             } else {
               // Otherwise, display a loading indicator
               return Container(
-                height: MediaQuery
-                    .of(context)
-                    .size
-                    .width / aspectRatio,
+                height: MediaQuery.of(context).size.width / aspectRatio,
                 child: Center(child: CircularProgressIndicator()),
               );
             }
@@ -129,13 +140,12 @@ class TakePictureScreenState extends State<TakePictureScreen> {
                         backgroundColor: Colors.lightBlueAccent,
                         child: Icon(Icons.switch_camera, size: ICON_SIZE / 2),
                         // Provide an onPressed callback.
-                        onPressed: () async {
-                          if (_controller != null) {
-                            await _controller.dispose();
-                          }
-                          setState(() {
-                            whichCam = !whichCam;
-                            initCamera(whichCam);
+                        onPressed: () {
+                          _controller.dispose().then((arg) {
+                            setState(() {
+                              whichCam = !whichCam;
+                              initCamera(whichCam);
+                            });
                           });
                         },
                       ),
@@ -172,13 +182,12 @@ class TakePictureScreenState extends State<TakePictureScreen> {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (context) =>
-                                    DisplayPictureScreen(
-                                      imagePath: path,
-                                      aspectRatio: aspectRatio,
-                                      fixedImage: fixExifRotation(path),
-                                      imgName: name,
-                                    ),
+                                builder: (context) => DisplayPictureScreen(
+                                  imagePath: path,
+                                  aspectRatio: aspectRatio,
+                                  fixedImage: fixExifRotation(path),
+                                  imgName: name,
+                                ),
                               ),
                             );
                           } catch (e) {
@@ -214,62 +223,58 @@ class DisplayPictureScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
         body: Column(children: <Widget>[
-          Container(
-            height: MediaQuery
-                .of(context)
-                .size
-                .width / aspectRatio,
-            child: FutureBuilder<List<int>>(
-              future: fixedImage,
-              builder: (context, snapshot) {
-                if (snapshot.hasData) {
-                  return Image.memory(snapshot.data);
-                } else {
-                  // Otherwise, display a loading indicator
-                  return Container(
-                    child: Center(child: CircularProgressIndicator()),
-                  );
-                }
-              },
-            ),
-          ),
-          Expanded(
-              child: Container(
-                  color: Colors.black,
-                  child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: <Widget>[
-                        Container(
-                            height: ICON_SIZE,
-                            width: ICON_SIZE,
-                            child: FloatingActionButton(
-                                heroTag: "btn3",
-                                backgroundColor: Colors.red,
-                                child: Icon(
-                                    Icons.arrow_back, size: ICON_SIZE / 2),
-                                // Provide an onPressed callback.
-                                onPressed: () {
-                                  Navigator.maybePop(context);
-                                })),
-                        Container(
-                            height: ICON_SIZE,
-                            width: ICON_SIZE,
-                            child: FloatingActionButton(
-                                heroTag: "btn4",
-                                backgroundColor: Colors.greenAccent,
-                                child: Icon(Icons.save, size: ICON_SIZE / 2),
-                                // Provide an onPressed callback.
-                                onPressed: () {
-                                  ImageGallerySaver.saveFile(imagePath)
-                                      .then((success) => print(success));
-                                  showSimpleNotification(
-                                    Text("Saved!"),
-                                    background: Colors.green,
-                                  );
-                                  Navigator.maybePop(context);
-                                }))
-                      ])))
-        ]));
+      Container(
+        height: MediaQuery.of(context).size.width / aspectRatio,
+        child: FutureBuilder<List<int>>(
+          future: fixedImage,
+          builder: (context, snapshot) {
+            if (snapshot.hasData) {
+              return Image.memory(snapshot.data);
+            } else {
+              // Otherwise, display a loading indicator
+              return Container(
+                child: Center(child: CircularProgressIndicator()),
+              );
+            }
+          },
+        ),
+      ),
+      Expanded(
+          child: Container(
+              color: Colors.black,
+              child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: <Widget>[
+                    Container(
+                        height: ICON_SIZE,
+                        width: ICON_SIZE,
+                        child: FloatingActionButton(
+                            heroTag: "btn3",
+                            backgroundColor: Colors.red,
+                            child: Icon(Icons.arrow_back, size: ICON_SIZE / 2),
+                            // Provide an onPressed callback.
+                            onPressed: () {
+                              Navigator.maybePop(context);
+                            })),
+                    Container(
+                        height: ICON_SIZE,
+                        width: ICON_SIZE,
+                        child: FloatingActionButton(
+                            heroTag: "btn4",
+                            backgroundColor: Colors.greenAccent,
+                            child: Icon(Icons.save, size: ICON_SIZE / 2),
+                            // Provide an onPressed callback.
+                            onPressed: () {
+                              ImageGallerySaver.saveFile(imagePath)
+                                  .then((success) => print(success));
+                              showSimpleNotification(
+                                Text("Saved!"),
+                                background: Colors.green,
+                              );
+                              Navigator.maybePop(context);
+                            }))
+                  ])))
+    ]));
   }
 }
 
