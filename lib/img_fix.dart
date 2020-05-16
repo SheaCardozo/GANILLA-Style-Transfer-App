@@ -1,8 +1,9 @@
 import 'dart:io';
 import 'package:exif/exif.dart';
 import 'package:image/image.dart' as img;
+import 'package:image_gallery_saver/image_gallery_saver.dart';
 
-Future<List<int>> fixExifRotation(String imagePath) async {
+Future<List<int>> fixExifRotation(String imagePath, bool invert) async {
   final originalFile = File(imagePath);
   List<int> imageBytes = await originalFile.readAsBytes();
 
@@ -24,21 +25,39 @@ Future<List<int>> fixExifRotation(String imagePath) async {
   final exifData = await readExifFromBytes(imageBytes);
 
   img.Image fixedImage;
-
-  if (height < width) {
+  int xcrop = 0;
+  int ycrop = 0;
     // rotate
-    if (exifData['Image Orientation'].printable.contains('Horizontal')) {
-      fixedImage = img.copyRotate(originalImage, 90);
-    } else if (exifData['Image Orientation'].printable.contains('180')) {
-      fixedImage = img.copyRotate(originalImage, -90);
-    } else {
-      fixedImage = img.copyRotate(originalImage, 0);
+  print(exifData['Image Orientation']);
+  if (exifData['Image Orientation'].printable.contains('Horizontal')) {
+    fixedImage = img.copyRotate(originalImage, 90);
+  } else if (exifData['Image Orientation'].printable.contains('180')) {
+    fixedImage = img.copyRotate(originalImage, -90);
+    ycrop = width - height;
+  } else if (exifData['Image Orientation'].printable.contains(invert ? '90 CW' : '90 CCW')) {
+    fixedImage = img.copyRotate(originalImage, 180);
+    if (!invert) {
+      xcrop = width - height;
+    }
+  } else {
+    fixedImage = img.copyRotate(originalImage, 0);
+    if (invert) {
+      xcrop = width - height;
     }
   }
 
-  // Here you can select whether you'd like to save it as png
-  // or jpg with some compression
-  // I choose jpg with 100% quality
+  if (invert) {
+    fixedImage = img.flipVertical(fixedImage);
+  }
+  fixedImage = img.copyCrop(fixedImage, xcrop, ycrop, height, height);
 
   return img.encodeJpg(fixedImage);
+}
+
+Future<dynamic> saveToPath (String imagePath, Future<List<int>> fixedImage) async {
+  final out = File(imagePath);
+  return fixedImage.then((outimg) {
+    return out.writeAsBytes(outimg).then ( (arg) {
+      return ImageGallerySaver.saveFile(imagePath);});
+  });
 }
