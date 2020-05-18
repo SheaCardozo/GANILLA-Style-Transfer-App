@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -8,8 +9,11 @@ import 'package:path_provider/path_provider.dart';
 import 'package:camera/camera.dart';
 import 'package:overlay_support/overlay_support.dart';
 import 'package:assorted_layout_widgets/assorted_layout_widgets.dart';
+import 'package:http/http.dart' as http;
 
 import 'img_fix.dart';
+
+const API_URL = "http://192.168.0.26:5123/";
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -197,7 +201,6 @@ class TakePictureScreenState extends State<TakePictureScreen>
                                     aspectRatio: aspectRatio,
                                     fixedImage:
                                         fixExifRotation(path, !whichCam),
-                                    imgName: name,
                                   ),
                                 ),
                               );
@@ -219,14 +222,12 @@ class DisplayPictureScreen extends StatelessWidget {
   final String imagePath;
   final double aspectRatio;
   final Future<List<int>> fixedImage;
-  final String imgName;
 
   const DisplayPictureScreen({
     Key key,
     this.imagePath,
     this.aspectRatio,
     this.fixedImage,
-    this.imgName,
   }) : super(key: key);
 
   @override
@@ -235,65 +236,173 @@ class DisplayPictureScreen extends StatelessWidget {
 
     return Scaffold(
         appBar: appBar,
-        body: Column(
-            children: <Widget>[
-              Container(
-                height: MediaQuery.of(context).size.width,
-                child: FutureBuilder<List<int>>(
-                  future: fixedImage,
-                  builder: (context, snapshot) {
-                    if (snapshot.hasData) {
-                      return Image.memory(snapshot.data);
-                    } else {
-                      // Otherwise, display a loading indicator
-                      return Container(
-                        child: Center(child: CircularProgressIndicator()),
-                      );
-                    }
-                  },
-                ),
-              ),
-              Container(
-                  color: Colors.black,
-                  height: MediaQuery.of(context).size.height -
-                      appBar.preferredSize.height -
-                      MediaQuery.of(context).size.width -
-                      MediaQuery.of(context).padding.top,
-                  width: MediaQuery.of(context).size.width,
-                  child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: <Widget>[
-                        Container(
-                            height: ICON_SIZE,
-                            width: ICON_SIZE,
-                            child: FloatingActionButton(
-                                heroTag: "btn3",
-                                backgroundColor: Colors.red,
-                                child:
-                                    Icon(Icons.arrow_back, size: ICON_SIZE / 2),
-                                // Provide an onPressed callback.
-                                onPressed: () {
-                                  Navigator.maybePop(context);
-                                })),
-                        Container(
-                            height: ICON_SIZE,
-                            width: ICON_SIZE,
-                            child: FloatingActionButton(
-                                heroTag: "btn4",
-                                backgroundColor: Colors.greenAccent,
-                                child: Icon(Icons.save, size: ICON_SIZE / 2),
-                                // Provide an onPressed callback.
-                                onPressed: () {
-                                  saveToPath(imagePath, fixedImage)
-                                      .then((success) => print(success));
-                                  showSimpleNotification(
-                                    Text("Saved!"),
-                                    background: Colors.green,
+        body: Column(children: <Widget>[
+          Container(
+            height: MediaQuery.of(context).size.width,
+            child: FutureBuilder<List<int>>(
+              future: fixedImage,
+              builder: (context, snapshot) {
+                if (snapshot.hasData) {
+                  return Image.memory(snapshot.data);
+                } else {
+                  // Otherwise, display a loading indicator
+                  return Container(
+                    child: Center(child: CircularProgressIndicator()),
+                  );
+                }
+              },
+            ),
+          ),
+          Container(
+              color: Colors.black,
+              height: MediaQuery.of(context).size.height -
+                  appBar.preferredSize.height -
+                  MediaQuery.of(context).size.width -
+                  MediaQuery.of(context).padding.top,
+              width: MediaQuery.of(context).size.width,
+              child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: <Widget>[
+                    Container(
+                        height: ICON_SIZE,
+                        width: ICON_SIZE,
+                        child: FloatingActionButton(
+                            heroTag: "btn3",
+                            backgroundColor: Colors.red,
+                            child: Icon(Icons.arrow_back, size: ICON_SIZE / 2),
+                            // Provide an onPressed callback.
+                            onPressed: () {
+                              Navigator.maybePop(context);
+                            })),
+                    Container(
+                        height: ICON_SIZE,
+                        width: ICON_SIZE,
+                        child: FloatingActionButton(
+                            heroTag: "btn4",
+                            backgroundColor: Colors.yellowAccent,
+                            child:
+                                Icon(Icons.arrow_upward, size: ICON_SIZE / 2),
+                            // Provide an onPressed callback.
+                            onPressed: () async {
+                              try {
+                                var uri = Uri.parse(API_URL);
+                                var request = http.MultipartRequest('POST', uri)
+                                  ..files.add(await http.MultipartFile.fromPath(
+                                    'image',
+                                    imagePath,
+                                  ));
+
+                                var response = await request.send();
+                                if (response.statusCode == 200) {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) =>
+                                          DisplayGeneratedScreen(
+                                        imagePath: imagePath,
+                                        aspectRatio: aspectRatio,
+                                        convImage: response.stream.toBytes(),
+                                      ),
+                                    ),
                                   );
-                                  Navigator.maybePop(context);
-                                }))
-                      ]))
-            ]));
+                                } else {
+                                  showSimpleNotification(
+                                    Text(
+                                        "Upload failed, is the API running on the network?"),
+                                    background: Colors.redAccent,
+                                  );
+                                  print('Uh');
+                                }
+                              } catch (e) {
+                                print(e);
+                                showSimpleNotification(
+                                  Text(
+                                      "Upload failed, is the API running on the network?"),
+                                  background: Colors.redAccent,
+                                );
+                              }
+                            }))
+                  ]))
+        ]));
+  }
+}
+
+class DisplayGeneratedScreen extends StatelessWidget {
+  final String imagePath;
+  final double aspectRatio;
+  final Future<List<int>> convImage;
+
+  const DisplayGeneratedScreen({
+    Key key,
+    this.imagePath,
+    this.aspectRatio,
+    this.convImage,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    AppBar appBar = AppBar(title: Text('Convert Image?'));
+
+    return Scaffold(
+        appBar: appBar,
+        body: Column(children: <Widget>[
+          Container(
+            height: MediaQuery.of(context).size.width,
+            child: FutureBuilder<List<int>>(
+              future: resizeConv(
+                  convImage, MediaQuery.of(context).size.width.round()),
+              builder: (context, snapshot) {
+                if (snapshot.hasData) {
+                  return Image.memory(snapshot.data);
+                } else {
+                  // Otherwise, display a loading indicator
+                  return Container(
+                    child: Center(child: CircularProgressIndicator()),
+                  );
+                }
+              },
+            ),
+          ),
+          Container(
+              color: Colors.black,
+              height: MediaQuery.of(context).size.height -
+                  appBar.preferredSize.height -
+                  MediaQuery.of(context).size.width -
+                  MediaQuery.of(context).padding.top,
+              width: MediaQuery.of(context).size.width,
+              child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: <Widget>[
+                    Container(
+                        height: ICON_SIZE,
+                        width: ICON_SIZE,
+                        child: FloatingActionButton(
+                            heroTag: "btn5",
+                            backgroundColor: Colors.red,
+                            child: Icon(Icons.arrow_back, size: ICON_SIZE / 2),
+                            // Provide an onPressed callback.
+                            onPressed: () {
+                              Navigator.maybePop(context);
+                            })),
+                    Container(
+                        height: ICON_SIZE,
+                        width: ICON_SIZE,
+                        child: FloatingActionButton(
+                            heroTag: "btn6",
+                            backgroundColor: Colors.greenAccent,
+                            child: Icon(Icons.save, size: ICON_SIZE / 2),
+                            // Provide an onPressed callback.
+                            onPressed: () {
+                              saveToPath(imagePath, convImage)
+                                  .then((success) => print(success));
+                              showSimpleNotification(
+                                Text("Saved!"),
+                                background: Colors.green,
+                              );
+                              Navigator.maybePop(context);
+                            }))
+                  ]))
+        ]));
   }
 }
 

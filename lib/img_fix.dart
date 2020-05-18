@@ -27,14 +27,16 @@ Future<List<int>> fixExifRotation(String imagePath, bool invert) async {
   img.Image fixedImage;
   int xcrop = 0;
   int ycrop = 0;
-    // rotate
+  // rotate
   print(exifData['Image Orientation']);
   if (exifData['Image Orientation'].printable.contains('Horizontal')) {
     fixedImage = img.copyRotate(originalImage, 90);
   } else if (exifData['Image Orientation'].printable.contains('180')) {
     fixedImage = img.copyRotate(originalImage, -90);
     ycrop = width - height;
-  } else if (exifData['Image Orientation'].printable.contains(invert ? '90 CW' : '90 CCW')) {
+  } else if (exifData['Image Orientation']
+      .printable
+      .contains(invert ? '90 CW' : '90 CCW')) {
     fixedImage = img.copyRotate(originalImage, 180);
     if (!invert) {
       xcrop = width - height;
@@ -51,13 +53,24 @@ Future<List<int>> fixExifRotation(String imagePath, bool invert) async {
   }
   fixedImage = img.copyCrop(fixedImage, xcrop, ycrop, height, height);
 
+  originalFile.writeAsBytes(
+      img.encodeJpg(img.copyResize(fixedImage, width: 256, height: 256)));
+
   return img.encodeJpg(fixedImage);
 }
 
-Future<dynamic> saveToPath (String imagePath, Future<List<int>> fixedImage) async {
+Future<dynamic> saveToPath(
+    String imagePath, Future<List<int>> convImage) async {
   final out = File(imagePath);
-  return fixedImage.then((outimg) {
-    return out.writeAsBytes(outimg).then ( (arg) {
-      return ImageGallerySaver.saveFile(imagePath);});
+  return convImage.then((outimg) {
+    return out.writeAsBytes(outimg).then((arg) {
+      return ImageGallerySaver.saveFile(imagePath);
+    });
   });
+}
+
+Future<List<int>> resizeConv(Future<List<int>> convImage, int size) async {
+  img.Image decImage = img.decodeImage(await convImage);
+  decImage = img.copyResize(decImage, height: size, width: size);
+  return img.encodeJpg(decImage);
 }

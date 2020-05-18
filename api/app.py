@@ -7,10 +7,14 @@ from PIL import Image
 from datetime import datetime
 
 app = FlaskAPI(__name__)
+app.debug = False
 
 
-@app.route("/", methods=['POST'])
+@app.route("/", methods=['GET', 'POST'])
 def run_model():
+    if request.method == 'GET':
+        return "test"
+
     now = datetime.now().strftime("%Y%m%d-%H%M%S")
 
     real = Image.open(request.files["image"]).resize((256, 256)).convert('RGB')
@@ -29,4 +33,5 @@ if __name__ == "__main__":
 
     MODEL = init(sys.argv[1])
 
-    app.run(debug=True)
+    app.run(host="0.0.0.0", port=5123, debug=False)
+
