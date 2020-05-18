@@ -13,7 +13,7 @@ import 'package:http/http.dart' as http;
 
 import 'img_fix.dart';
 
-const API_URL = "http://192.168.0.26:5123/";
+const API_URL = "http://192.168.0.11:5123/";
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -341,7 +341,7 @@ class DisplayGeneratedScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    AppBar appBar = AppBar(title: Text('Convert Image?'));
+    AppBar appBar = AppBar(title: Text('Save Image?'));
 
     return Scaffold(
         appBar: appBar,
